@@ -1,0 +1,13 @@
+services:
+  simulation:
+    build:
+      context: ./simulation
+    image: larkfen-pybullet-simulation:local
+    volumes:
+      - ./simulation/artifacts:/artifacts
+    command:
+      - python
+      - -m
+      - drone_sim
+      - --output
+      - /artifacts/flight.mp4
