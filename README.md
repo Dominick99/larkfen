@@ -23,13 +23,12 @@ At a high level, an episode has the following contract:
 - **Failure:** the target remains lost, the drone crashes, or the episode times
   out.
 
-The current milestone is the simulation foundation for that task. It includes
-a Dockerized, headless PyBullet environment with two airframes: a hovering
-quadcopter and an aerodynamic fixed-wing drone. Each currently flies a
-repeatable waypoint course suited to its flight characteristics and writes a
-video to the host, so no local Python packages are required. Target motion,
-bounding-box observations, episode rewards, and training integration will be
-added in subsequent milestones.
+The current milestone includes an end-to-end deterministic pursuit baseline.
+A car follows a looping course, a forward camera on the drone produces a
+ground-truth bounding box from PyBullet's segmentation image, and the drone
+steers onto a collision course using the box center and area. The rendered video is the drone-camera
+view with the synthetic detection drawn in green. No target world position is
+given to the pursuit controller.
 
 ## Run
 
@@ -75,8 +74,11 @@ override the selected airframe's default mass.
 - Position/attitude control for the quadcopter
 - Simplified lift, drag, thrust, banking, and altitude control for fixed-wing
   flight
-- Ground, obstacles, a target, shadows, and a tracking camera
+- A moving car on a deterministic looping path
+- Drone-camera segmentation, synthetic bounding boxes, and video overlays
+- A bounding-box-only interception controller with physical-contact telemetry
+- Ground, obstacles, shadows, and camera rendering
 - Deterministic seeds and container-friendly MP4 output
 
-PX4, sensor emulation, a Gymnasium API, perception, and domain randomization
-are intentionally left for later milestones.
+PX4, learned perception, a Gymnasium API, and domain randomization are
+intentionally left for later milestones.

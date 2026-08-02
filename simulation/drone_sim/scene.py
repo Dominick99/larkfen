@@ -19,8 +19,3 @@ def create_scene() -> None:
         visual = p.createVisualShape(p.GEOM_BOX, halfExtents=size, rgbaColor=color)
         p.createMultiBody(0, collision, visual, position)
 
-    target = p.createVisualShape(
-        p.GEOM_SPHERE, radius=0.22, rgbaColor=[0.95, 0.12, 0.2, 1]
-    )
-    p.createMultiBody(0, -1, target, [2.8, -1.5, 1.6])
-
