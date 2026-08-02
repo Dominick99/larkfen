@@ -1,7 +1,8 @@
 services:
   simulation:
     build:
-      context: ./simulation
+      context: .
+      dockerfile: simulation/Dockerfile
     image: larkfen-pybullet-simulation:local
     volumes:
       - ./simulation/artifacts:/artifacts

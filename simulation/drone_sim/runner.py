@@ -9,12 +9,14 @@ import imageio.v2 as imageio
 import numpy as np
 import pybullet as p
 
+from companion_computer import BoundingBoxInterceptionGuidance
+from flight_controller import FixedWingFlightController, QuadcopterFlightController
+
 from .perception import detect_body, draw_bounding_box
-from .pursuit import BoundingBoxPursuitController
 from .rendering import render_drone_camera
 from .scene import create_scene
 from .target import MovingCar
-from .vehicles import Drone
+from .vehicles import Drone, FixedWing, Quadcopter
 
 
 @dataclass(frozen=True)
@@ -57,7 +59,34 @@ class SimulationRunner:
             drone.create()
             car = MovingCar()
             car.create()
-            controller = BoundingBoxPursuitController()
+            guidance = BoundingBoxInterceptionGuidance()
+            if isinstance(drone, Quadcopter):
+                flight_controller = QuadcopterFlightController(
+                    mass=drone.config.mass,
+                    max_force=drone.config.max_force,
+                    max_torque=drone.config.max_torque,
+                    linear_drag=drone.config.linear_drag,
+                    angular_drag=drone.config.angular_drag,
+                    position_gain=drone.config.position_gain,
+                    velocity_gain=drone.config.velocity_gain,
+                    attitude_gain=drone.config.attitude_gain,
+                    angular_gain=drone.config.angular_gain,
+                )
+            elif isinstance(drone, FixedWing):
+                flight_controller = FixedWingFlightController(
+                    mass=drone.config.mass,
+                    wing_area=drone.config.wing_area,
+                    cruise_speed=drone.config.cruise_speed,
+                    max_thrust=drone.config.max_thrust,
+                    lift_coefficient=drone.config.lift_coefficient,
+                    drag_coefficient=drone.config.drag_coefficient,
+                    turn_gain=drone.config.turn_gain,
+                    attitude_gain=drone.config.attitude_gain,
+                    angular_gain=drone.config.angular_gain,
+                    max_pitch_degrees=drone.config.max_pitch_degrees,
+                )
+            else:
+                raise TypeError(f"No flight controller configured for {type(drone)!r}")
 
             output.parent.mkdir(parents=True, exist_ok=True)
             writer = imageio.get_writer(
@@ -75,27 +104,29 @@ class SimulationRunner:
             for step in range(int(self.config.duration * self.config.physics_hz)):
                 elapsed = step / self.config.physics_hz
                 car.update(elapsed)
-                waypoint = controller.waypoint(drone.body_id, box)
-                drone.control(waypoint, 1 / self.config.physics_hz)
+                vehicle_state = drone.state(elapsed)
+                setpoint = guidance.update(box, vehicle_state)
+                wrench = flight_controller.update(vehicle_state, setpoint)
+                drone.apply_wrench(wrench)
                 p.stepSimulation()
-                position, _, _, _ = drone.state()
                 minimum_distance = min(
-                    minimum_distance, float(np.linalg.norm(position - car.position()))
+                    minimum_distance,
+                    float(np.linalg.norm(drone.state(elapsed).position - car.position())),
                 )
                 contacts = p.getContactPoints(drone.body_id, car.body_id)
                 if contacts:
-                    drone_velocity = drone.state()[2]
+                    drone_velocity = drone.state(elapsed).velocity
                     car_velocity = np.asarray(p.getBaseVelocity(car.body_id)[0])
                     impact = True
                     impact_time = (step + 1) / self.config.physics_hz
                     impact_speed = float(np.linalg.norm(drone_velocity - car_velocity))
                     image, mask = render_drone_camera(drone.body_id)
-                    box = detect_body(mask, car.body_id)
+                    box = detect_body(mask, car.body_id, elapsed)
                     writer.append_data(draw_bounding_box(image, box))
                     break
                 if step % frame_interval == 0:
                     image, mask = render_drone_camera(drone.body_id)
-                    box = detect_body(mask, car.body_id)
+                    box = detect_body(mask, car.body_id, elapsed)
                     observation_count += 1
                     if box is not None:
                         detections += 1
@@ -120,7 +151,8 @@ class SimulationRunner:
             "final_position": final_position,
             "final_orientation_xyzw": final_orientation,
             "target": "moving_car",
-            "controller": "bounding_box_intercept",
+            "guidance": "companion_computer.bounding_box_interception",
+            "flight_controller": f"flight_controller.{drone.name}",
             "detection_rate": detections / max(observation_count, 1),
             "minimum_target_distance": minimum_distance,
             "last_bounding_box": last_box,
