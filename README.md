@@ -26,9 +26,9 @@ At a high level, an episode has the following contract:
 The current milestone includes an end-to-end deterministic pursuit baseline.
 A car follows a looping course, a forward camera on the drone produces a
 ground-truth bounding box from PyBullet's segmentation image, and the drone
-steers onto a collision course using the box center and area. The rendered video is the drone-camera
-view with the synthetic detection drawn in green. No target world position is
-given to the pursuit controller.
+steers onto a collision course using the box center and area. The rendered
+video is the drone-camera view with the synthetic detection drawn in green. No
+target world position is given to the pursuit controller.
 
 ## Run
 
@@ -56,29 +56,46 @@ override the selected airframe's default mass.
 
 ## Architecture
 
-- `drone_sim/vehicles/base.py` defines the shared airframe interface.
-- `drone_sim/vehicles/quadcopter.py` contains quadcopter geometry and control.
-- `drone_sim/vehicles/fixed_wing.py` contains fixed-wing geometry, aerodynamic
-  forces, and waypoint autopilot.
-- `drone_sim/scene.py` builds the environment.
-- `drone_sim/rendering.py` owns camera rendering.
-- `drone_sim/runner.py` owns the simulation lifecycle and output metadata.
-- `drone_sim/cli.py` parses command-line options and selects an airframe.
-- `drone_sim/simulation.py` preserves the original quadcopter API for existing
-  callers.
+The demo is split at the same conceptual boundaries used by a deployed drone:
+
+```text
+simulation camera -> BoundingBoxObservation
+                         |
+                         v
+companion-computer guidance -> PositionSetpoint
+                                  |
+                                  v
+flight-controller control -> WrenchCommand
+                                  |
+                                  v
+simulation airframe/physics -> VehicleState
+```
+
+- `drone_protocol/` defines the shared, simulator-independent messages.
+- `companion-computer/` contains bounding-box guidance and has no PyBullet
+  dependency.
+- `flight-controller/` contains position/attitude control and has no PyBullet
+  dependency.
+- `simulation/drone_sim/` owns the world, camera, vehicle geometry, PyBullet
+  adapter, rendering, and evaluation.
+
+All three currently execute in one deterministic process. The boundaries are
+ordinary typed contracts so later transport adapters can put guidance in an
+onboard container and replace the Python flight controller with PX4/ArduPilot
+SITL or physical autopilot firmware without changing the guidance policy.
 
 ## Current scope
 
 - PyBullet physics in `DIRECT` (headless) mode
 - Rigid-body quadcopter and fixed-wing airframes with independent configuration
-- Position/attitude control for the quadcopter
-- Simplified lift, drag, thrust, banking, and altitude control for fixed-wing
-  flight
+- Simulator-independent quadcopter and fixed-wing flight-control modules
+- PyBullet airframes that contain geometry and physics integration only
 - A moving car on a deterministic looping path
 - Drone-camera segmentation, synthetic bounding boxes, and video overlays
 - A bounding-box-only interception controller with physical-contact telemetry
 - Ground, obstacles, shadows, and camera rendering
 - Deterministic seeds and container-friendly MP4 output
 
-PX4, learned perception, a Gymnasium API, and domain randomization are
-intentionally left for later milestones.
+Inter-process transport, MAVLink, PX4/ArduPilot SITL, learned perception, a
+Gymnasium API, and domain randomization are intentionally left for later
+milestones.

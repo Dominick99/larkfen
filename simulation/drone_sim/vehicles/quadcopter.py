@@ -98,61 +98,6 @@ class Quadcopter(Drone):
         )
         return self.body_id
 
-    def control(self, target: np.ndarray, time_step: float) -> None:
-        del time_step
-        position, quaternion, velocity, angular_velocity = self.state()
-        desired_accel = (
-            self.config.position_gain * (target - position)
-            - self.config.velocity_gain * velocity
-            + np.array([0.0, 0.0, 9.81])
-        )
-        desired_force = self.config.mass * desired_accel
-        force_norm = float(np.linalg.norm(desired_force))
-        force = desired_force * min(
-            1.0, self.config.max_force / max(force_norm, 1e-6)
-        )
-
-        yaw = math.atan2(target[1] - position[1], target[0] - position[0])
-        desired_z = force / max(np.linalg.norm(force), 1e-6)
-        desired_x_hint = np.array([math.cos(yaw), math.sin(yaw), 0.0])
-        desired_y = np.cross(desired_z, desired_x_hint)
-        desired_y /= max(np.linalg.norm(desired_y), 1e-6)
-        desired_x = np.cross(desired_y, desired_z)
-        desired_rotation = np.column_stack((desired_x, desired_y, desired_z))
-
-        rotation = np.asarray(p.getMatrixFromQuaternion(quaternion)).reshape(3, 3)
-        error_matrix = 0.5 * (
-            desired_rotation.T @ rotation - rotation.T @ desired_rotation
-        )
-        attitude_error = np.array(
-            [error_matrix[2, 1], error_matrix[0, 2], error_matrix[1, 0]]
-        )
-        torque = (
-            -self.config.attitude_gain * attitude_error
-            - self.config.angular_gain * angular_velocity
-        )
-        torque = np.clip(torque, -self.config.max_torque, self.config.max_torque)
-
-        p.applyExternalForce(
-            self.body_id, -1, force.tolist(), position.tolist(), p.WORLD_FRAME
-        )
-        p.applyExternalTorque(
-            self.body_id, -1, torque.tolist(), p.LINK_FRAME
-        )
-        p.applyExternalForce(
-            self.body_id,
-            -1,
-            (-self.config.linear_drag * velocity).tolist(),
-            position.tolist(),
-            p.WORLD_FRAME,
-        )
-        p.applyExternalTorque(
-            self.body_id,
-            -1,
-            (-self.config.angular_drag * angular_velocity).tolist(),
-            p.WORLD_FRAME,
-        )
-
     def default_waypoints(self) -> np.ndarray:
         return np.array(
             [
