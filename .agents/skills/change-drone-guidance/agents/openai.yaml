@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Drone Guidance"
+  short_description: "Modify guidance without breaking boundaries"
+  default_prompt: "Use $change-drone-guidance to update the bounding-box steering policy safely."
