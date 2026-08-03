@@ -1,0 +1,4 @@
+interface:
+  display_name: "Verify Interception"
+  short_description: "Run and assess the interception baseline"
+  default_prompt: "Use $verify-interception to validate the current drone interception behavior."
