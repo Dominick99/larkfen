@@ -1,0 +1,5 @@
+.git/
+**/artifacts/
+**/__pycache__/
+*.pyc
+mujoco_sim/
