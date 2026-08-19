@@ -16,26 +16,16 @@ def create_ground() -> int:
     )
 
 
-def create_cube() -> int:
-    """Create a dynamic cube two metres above the ground."""
-    half_extents = [0.35, 0.35, 0.35]
-    collision_shape = p.createCollisionShape(
-        p.GEOM_BOX,
-        halfExtents=half_extents,
-    )
+def create_target_marker(position: tuple[float, float, float]) -> int:
+    """Create a visible, non-colliding marker for the quadcopter demo."""
     visual_shape = p.createVisualShape(
-        p.GEOM_BOX,
-        halfExtents=half_extents,
-        rgbaColor=[0.15, 0.45, 0.9, 1.0],
+        p.GEOM_SPHERE,
+        radius=0.16,
+        rgbaColor=[0.95, 0.18, 0.12, 1.0],
     )
     return p.createMultiBody(
-        baseMass=1.0,
-        baseCollisionShapeIndex=collision_shape,
+        baseMass=0.0,
+        baseCollisionShapeIndex=-1,
         baseVisualShapeIndex=visual_shape,
-        basePosition=[0.0, 0.0, 2.0],
+        basePosition=position,
     )
-
-
-def create_scene() -> tuple[int, int]:
-    """Create every object in the initial learning scene."""
-    return create_ground(), create_cube()

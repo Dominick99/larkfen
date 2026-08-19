@@ -5,8 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class SimulationConfig:
-    """Values that control PyBullet timing and video output."""
-
     duration_seconds: float = 6.0
     physics_hz: int = 240
     control_hz: int = 120
