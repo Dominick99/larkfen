@@ -1,0 +1,11 @@
+**
+!car_following/
+!car_following/**
+!robotics/
+!robotics/src/
+!robotics/src/**
+!mujoco_sim/
+!mujoco_sim/src/
+!mujoco_sim/src/**
+**/artifacts/
+**/__pycache__/

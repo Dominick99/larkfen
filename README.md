@@ -53,3 +53,10 @@ tests compare whether they remain within the same useful response envelope.
 prototype for geographic navigation between Albuquerque and Santa Fe. It includes
 noisy GPS, air-data dead reckoning during outages, automated evaluation, a 2D MP4,
 and an interactive map replay. It does not depend on the quadcopter packages.
+
+## Visual car following
+
+[`car_following/`](car_following/README.md) uses MuJoCo to simulate three moving
+colored cars and a quadcopter that follows the green car using RGB detection and
+tracking boxes. It includes a replaceable perception interface, target-loss
+hover behavior, independent tracking evaluation, and a split-view MP4 recording.
