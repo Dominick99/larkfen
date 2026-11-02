@@ -46,3 +46,10 @@ docker run --rm -v "${PWD}/mujoco_sim/artifacts:/artifacts" larkfen-mujoco-sim
 
 The two engines are not expected to produce bit-identical results. Cross-backend
 tests compare whether they remain within the same useful response envelope.
+
+## Standalone food delivery experiment
+
+[`food_delivery/`](food_delivery/README.md) is an independent JSBSim fixed-wing
+prototype for geographic navigation between Albuquerque and Santa Fe. It includes
+noisy GPS, air-data dead reckoning during outages, automated evaluation, a 2D MP4,
+and an interactive map replay. It does not depend on the quadcopter packages.

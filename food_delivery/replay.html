@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Larkfen · Food delivery flight replay</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;background:#0c1420;color:#e5edf6}*{box-sizing:border-box}body{margin:0}header{padding:22px 28px;border-bottom:1px solid #28364a;display:flex;align-items:center;justify-content:space-between;gap:20px}header strong{letter-spacing:.15em;font-size:13px;color:#67e8c7}h1{font-size:25px;margin:8px 0}p{color:#a6b5c8;line-height:1.55;margin:6px 0}main{display:grid;grid-template-columns:290px 1fr;gap:20px;padding:24px}aside,.panel{background:#121f30;border:1px solid #29394f;border-radius:14px;padding:20px}.metric{padding:14px 0;border-bottom:1px solid #29394f}.metric span{display:block;color:#a6b5c8;font-size:13px}.metric b{font-size:25px;font-weight:600}.small{font-size:12px;color:#a6b5c8}.badge{color:#67e8c7;border:1px solid #36695d;border-radius:20px;padding:8px 14px;white-space:nowrap}.maparea{height:500px;position:relative;background:#101b29;border-radius:10px;overflow:hidden}canvas{width:100%;height:100%;display:block}#map{position:absolute;inset:0;display:none}.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;margin:14px 0}.truth{color:#38bdf8}.estimate{color:#fb923c}.route{color:#94a3b8}button,select{background:#20344d;color:#e5edf6;border:1px solid #49617e;border-radius:7px;padding:9px 14px;cursor:pointer}button:focus-visible,input:focus-visible{outline:2px solid #67e8c7}.controls{display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap}input{flex:1;min-width:120px;accent-color:#67e8c7}#errorChart{height:130px;margin-top:15px}#mapStatus{margin-top:10px}a{color:#67e8c7}@media(max-width:850px){main{grid-template-columns:1fr;padding:12px}aside{display:grid;grid-template-columns:1fr 1fr;gap:10px}.maparea{height:420px}header{padding:16px}.badge{display:none}}
+</style>
+<header><div><strong>LARKFEN / FLIGHT EXPERIMENT 01</strong><h1 id="title">Albuquerque → Santa Fe</h1><p>Fixed-wing navigation · GPS outage &amp; dead reckoning</p></div><div class="badge" id="outcome"></div></header>
+<main><aside>
+<div class="metric"><span>Simulated mission</span><b id="duration"></b></div>
+<div class="metric"><span>Route distance</span><b id="distance"></b></div>
+<div class="metric"><span>Closest approach</span><b id="closest"></b></div>
+<div class="metric"><span>Maximum outage drift</span><b id="drift"></b></div>
+<div class="metric"><span>Physics speed</span><b id="speedup"></b></div>
+<p class="small">JSBSim Cessna 172 surrogate. Starts airborne. Arrival means entering a delivery zone, followed by a loiter command. No terrain, buildings, landing, or package release.</p>
+<p class="small">Endpoints are representative coordinates, not verified restaurant or home addresses. Custom routes are supported by the CLI.</p>
+</aside><section class="panel">
+<div class="maparea"><canvas id="track" aria-label="Flight path in geographic coordinates"></canvas><div id="map" aria-label="Interactive geographic map"></div></div>
+<div class="legend"><span class="truth">● Actual aircraft</span><span class="estimate">● Estimated position</span><span class="route">┄ Planned route</span><span>◎ Delivery zone</span></div>
+<div class="controls"><button id="play">Play</button><input id="scrub" aria-label="Replay time" type="range" min="0" value="0"><label>Speed <select id="rate"><option>10</option><option selected>40</option><option>100</option></select>×</label><button id="loadMap">Load street map</button></div>
+<p id="status" role="status"></p><canvas id="errorChart" aria-label="Navigation error over time"></canvas>
+<p id="mapStatus" class="small">Offline geographic replay ready. Street map requires internet and loads only when requested.</p>
+<p class="small">Optional basemap: © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. <a href="https://www.openstreetmap.org/fixthemap">Report a map issue</a>.</p>
+</section></main>
+<script>
+'use strict';
+const flight=__FLIGHT_DATA__;
+const samples=flight.samples,cfg=flight.scenario,m=flight.metrics,$=id=>document.getElementById(id);
+if(cfg.origin[0]!==35.1068||cfg.origin[1]!==-106.6298||cfg.destination[0]!==35.6595||cfg.destination[1]!==-105.9770)$('title').textContent='Custom delivery route';
+$('duration').textContent=(m.simulated_seconds/60).toFixed(1)+' min';
+$('distance').textContent=(m.route_distance_m/1000).toFixed(1)+' km';
+$('closest').textContent=m.closest_approach_m.toFixed(0)+' m';
+$('drift').textContent=m.max_outage_error_m.toFixed(0)+' m';
+$('speedup').textContent=m.simulation_speedup.toFixed(0)+'× real time';
+$('outcome').textContent=m.success?'Delivery zone reached':'Mission incomplete';
+$('scrub').max=samples.length-1;
+let index=0,playing=false,last=null,clock=0,map=null,actualLine,estimateLine,actualMarker,estimateMarker;
+const points=[cfg.origin,cfg.destination,...samples.map(s=>s.true),...samples.map(s=>s.estimated)];
+const latMin=Math.min(...points.map(p=>p[0]))-.035,latMax=Math.max(...points.map(p=>p[0]))+.035;
+const lonMin=Math.min(...points.map(p=>p[1]))-.035,lonMax=Math.max(...points.map(p=>p[1]))+.035;
+function setupCanvas(el){const box=el.getBoundingClientRect(),dpr=window.devicePixelRatio||1;el.width=Math.round(box.width*dpr);el.height=Math.round(box.height*dpr);const ctx=el.getContext('2d');ctx.scale(dpr,dpr);return [ctx,box.width,box.height];}
+function draw(){
+ const s=samples[index];$('scrub').value=index;
+ $('status').textContent=`${(s.time_s/60).toFixed(1)} min · GPS ${s.gps_available?'available':'OUTAGE'} · ${s.phase} · error ${s.error_m.toFixed(1)} m · ${(s.remaining_m/1000).toFixed(2)} km to destination · ${s.altitude_m.toFixed(0)} m MSL`;
+ const [ctx,w,h]=setupCanvas($('track'));ctx.fillStyle='#101b29';ctx.fillRect(0,0,w,h);
+ const scale=Math.min((w-90)/((lonMax-lonMin)*Math.cos((latMin+latMax)*Math.PI/360)),(h-70)/(latMax-latMin));
+ function xy(p){return [w/2+(p[1]-(lonMin+lonMax)/2)*Math.cos((latMin+latMax)*Math.PI/360)*scale,h/2-(p[0]-(latMin+latMax)/2)*scale];}
+ ctx.font='12px system-ui';ctx.strokeStyle='#23374c';ctx.fillStyle='#8195af';
+ for(let lat=Math.ceil(latMin*10)/10;lat<latMax;lat+=.1){let y=xy([lat,lonMin])[1];ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();ctx.fillText(lat.toFixed(1)+'°N',8,y-4);}
+ for(let lon=Math.ceil(lonMin*10)/10;lon<lonMax;lon+=.1){let x=xy([latMin,lon])[0];ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();ctx.fillText(lon.toFixed(1)+'°',x+3,h-9);}
+ function line(coords,color,dash=[]){ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash(dash);ctx.beginPath();coords.forEach((p,i)=>{const [x,y]=xy(p);i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.stroke();ctx.setLineDash([]);}
+ line([cfg.origin,cfg.destination],'#94a3b8',[7,6]);
+ line(samples.slice(0,index+1).map(s=>s.true),'#38bdf8');line(samples.slice(0,index+1).map(s=>s.estimated),'#fb923c');
+ function dot(p,color,r){let [x,y]=xy(p);ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();}
+ dot(cfg.origin,'#67e8c7',5);dot(cfg.destination,'#fbbf24',6);
+ ctx.strokeStyle='#fbbf24';let dest=xy(cfg.destination);ctx.beginPath();ctx.arc(...dest,Math.max(5,cfg.delivery_radius_m/111000*scale),0,Math.PI*2);ctx.stroke();
+ ctx.fillStyle='#c9d8e8';ctx.fillText('Departure',...xy([cfg.origin[0]-.025,cfg.origin[1]]));ctx.fillText('Destination',...xy([cfg.destination[0]+.015,cfg.destination[1]-.08]));
+ dot(s.estimated,'#fb923c',5);dot(s.true,'#38bdf8',6);
+ const [g,cw,ch]=setupCanvas($('errorChart'));const maxError=Math.max(30,m.max_position_error_m)*1.1;
+ g.fillStyle='#101b29';g.fillRect(0,0,cw,ch);g.fillStyle='#fb923c22';g.fillRect(cfg.outage_start_s/m.simulated_seconds*cw,0,(cfg.outage_end_s-cfg.outage_start_s)/m.simulated_seconds*cw,ch);
+ g.strokeStyle='#fb923c';g.beginPath();samples.slice(0,index+1).forEach((p,i)=>{let x=p.time_s/m.simulated_seconds*cw,y=ch-15-p.error_m/maxError*(ch-35);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();g.fillStyle='#a6b5c8';g.font='12px system-ui';g.fillText('Position error · '+m.max_position_error_m.toFixed(0)+' m peak · shaded interval = GPS outage',10,17);
+ if(map){actualLine.setLatLngs(samples.slice(0,index+1).map(s=>s.true));estimateLine.setLatLngs(samples.slice(0,index+1).map(s=>s.estimated));actualMarker.setLatLng(s.true);estimateMarker.setLatLng(s.estimated);}
+}
+$('play').onclick=()=>{if(index===samples.length-1){index=0;clock=0;}playing=!playing;$('play').textContent=playing?'Pause':'Play';last=null;};
+$('scrub').oninput=()=>{index=Number($('scrub').value);clock=samples[index].time_s;draw();};
+function animate(now){if(playing){if(last!==null)clock+=Math.min((now-last)/1000,.25)*Number($('rate').value);while(index<samples.length-1&&samples[index+1].time_s<=clock)index++;draw();if(index===samples.length-1){playing=false;$('play').textContent='Play';}}last=now;requestAnimationFrame(animate);}requestAnimationFrame(animate);
+window.addEventListener('resize',()=>{draw();if(map)map.invalidateSize();});
+$('loadMap').onclick=async()=>{
+ const button=$('loadMap');button.disabled=true;$('mapStatus').textContent='Loading street map…';
+ try{
+  if(!window.L){const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.append(css);await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';script.onload=resolve;script.onerror=reject;document.head.append(script);});}
+  $('map').style.display='block';map=L.map('map').fitBounds([cfg.origin,cfg.destination],{padding:[40,40]});
+  // Human-viewed tiles only. Browser caching and normal Referer headers apply.
+  const tiles=L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
+  tiles.on('tileerror',()=>{$('mapStatus').textContent='Some map tiles could not load. Flight replay remains available.';});
+  L.polyline([cfg.origin,cfg.destination],{color:'#64748b',dashArray:'7 6'}).addTo(map);
+  L.circle(cfg.destination,{radius:cfg.delivery_radius_m,color:'#d97706'}).addTo(map).bindTooltip('Delivery zone');
+  L.circleMarker(cfg.origin,{radius:6,color:'#16a34a'}).addTo(map).bindTooltip('Departure');
+  actualLine=L.polyline([],{color:'#0284c7'}).addTo(map);estimateLine=L.polyline([],{color:'#ea580c'}).addTo(map);
+  actualMarker=L.circleMarker(samples[index].true,{radius:7,color:'#0284c7'}).addTo(map);estimateMarker=L.circleMarker(samples[index].estimated,{radius:5,color:'#ea580c'}).addTo(map);
+  button.textContent='Street map loaded';$('mapStatus').textContent='Street map ready. Pan and zoom to inspect the flight.';draw();
+ }catch(error){button.disabled=false;$('map').style.display='none';$('mapStatus').textContent='Street map unavailable. Offline geographic replay is still ready.';}
+};
+draw();
+</script>
+</html>
